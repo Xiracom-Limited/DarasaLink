@@ -130,3 +130,8 @@ ERROR - 2025-04-28 06:51:36 --> Severity: Warning --> Undefined variable $studen
 ERROR - 2025-04-28 06:51:36 --> Severity: Warning --> foreach() argument must be of type array|object, null given /home/eugene/Task/DarasaLink/application/views/mpesa/payment_form.php 21
 ERROR - 2025-04-28 06:51:54 --> Severity: Warning --> Undefined variable $students /home/eugene/Task/DarasaLink/application/views/mpesa/payment_form.php 21
 ERROR - 2025-04-28 06:51:54 --> Severity: Warning --> foreach() argument must be of type array|object, null given /home/eugene/Task/DarasaLink/application/views/mpesa/payment_form.php 21
+ERROR - 2025-04-28 06:57:23 --> Severity: Warning --> Undefined variable $students /home/eugene/Task/DarasaLink/application/views/mpesa/payment_form.php 21
+ERROR - 2025-04-28 06:57:23 --> Severity: Warning --> foreach() argument must be of type array|object, null given /home/eugene/Task/DarasaLink/application/views/mpesa/payment_form.php 21
+ERROR - 2025-04-28 07:01:40 --> Severity: Warning --> Undefined variable $students /home/eugene/Task/DarasaLink/application/views/mpesa/payment_form.php 21
+ERROR - 2025-04-28 07:01:40 --> Severity: Warning --> foreach() argument must be of type array|object, null given /home/eugene/Task/DarasaLink/application/views/mpesa/payment_form.php 21
+ERROR - 2025-04-28 07:01:51 --> Severity: Warning --> Undefined array key "shortcode" /home/eugene/Task/DarasaLink/application/libraries/Mpesa_lib.php 25

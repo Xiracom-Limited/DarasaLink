@@ -11,23 +11,84 @@ class Mpesa_lib {
 			'type'              => 4,
 			'shortcode'         => '174379',
 			'headoffice'        => '174379',
-		    'key'               => 'WiGveilGB2SKbXWi9IShIHDK7XfCtvWK',
-			'secret'            => 'mJBnR94sTlGFUkvM',
+		    'key'               => 'wh11KbBRa7SfTBosfKEMwEOPUGO61AUA5wxgZV74A8Xy2sEJ',
+			'secret'            => 'SbA8RTxBmwVyYD7QG5anNENMDsWKPpiHXDnRa5eWOJLywGDBnT7nGSPkPGiIM7ah',
 			'passkey'           => 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919',
-			'validation_url'    => '/pesa/validate',
-			'confirmation_url'  => '/pesa/confirm',
-			'callback_url'      => '/pesa/reconcile',
-			'timeout_url'       => '/pesa/timeout',
-			'results_url'       => '/pesa/results',
+			'base_url'          => 'https://demo.darasalink.co.ke/mpesa/reconcile', // Base URL for your application
+			'validation_url'    => '/mpesa/validate',
+			'confirmation_url'  => '/mpesa/confirm',
+			'callback_url'      => '/mpesa/reconcile',
+			'timeout_url'       => '/mpesa/timeout',
+			'results_url'       => '/mpesa/results',
 		);
 
-		if(!isset($configs['headoffice']) || empty($configs['headoffice'])){
+		// Fix for undefined array key - only check for headoffice if shortcode is set
+		if(isset($configs['shortcode']) && (!isset($configs['headoffice']) || empty($configs['headoffice']))){
 			$defaults['headoffice'] = $configs['shortcode'];
 		}
 
 		$parsed = array_merge($defaults, $configs);
 
-		$this->config 	= (object)$parsed;
+		// Set the base URL if not provided
+		if (empty($parsed['base_url'])) {
+			$parsed['base_url'] = $this->get_base_url();
+		}
+
+		// Ensure all URLs are absolute
+		$url_fields = ['validation_url', 'confirmation_url', 'callback_url', 'timeout_url', 'results_url'];
+		foreach ($url_fields as $field) {
+			$parsed[$field] = $this->ensure_absolute_url($parsed[$field], $parsed['base_url']);
+		}
+
+		$this->config = (object)$parsed;
+	}
+
+	/**
+	 * Ensure a URL is absolute (starts with http:// or https://)
+	 * 
+	 * @param string $url The URL to check and format
+	 * @param string $base_url The base URL to prepend if $url is relative
+	 * @return string The absolute URL
+	 */
+	private function ensure_absolute_url($url, $base_url) 
+	{
+		// If URL already starts with http:// or https://, it's already absolute
+		if (preg_match('/^https?:\/\//i', $url)) {
+			return $url;
+		}
+		
+		// Make sure the base URL doesn't have a trailing slash if the URL has a leading slash
+		if (substr($url, 0, 1) === '/' && substr($base_url, -1) === '/') {
+			$base_url = rtrim($base_url, '/');
+		} 
+		// Add a trailing slash to base URL if the URL doesn't have a leading slash
+		elseif (substr($url, 0, 1) !== '/' && substr($base_url, -1) !== '/') {
+			$base_url .= '/';
+		}
+		
+		return $base_url . ltrim($url, '/');
+	}
+
+	/**
+	 * Attempt to determine the base URL for the application
+	 * 
+	 * @return string The base URL
+	 */
+	private function get_base_url() 
+	{
+		// Try to get base URL from CodeIgniter if available
+		if (function_exists('base_url')) {
+			return base_url();
+		}
+		
+		// Manual determination of base URL
+		$protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || $_SERVER['SERVER_PORT'] == 443) ? "https://" : "http://";
+		$host = isset($_SERVER['HTTP_HOST']) ? $_SERVER['HTTP_HOST'] : 'localhost';
+		
+		// Remove any path components from the script name to get the directory
+		$dir = isset($_SERVER['SCRIPT_NAME']) ? rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\') : '';
+		
+		return $protocol . $host . $dir;
 	}
 
 	/**
