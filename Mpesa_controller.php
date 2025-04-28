@@ -116,7 +116,8 @@ class Mpesa_controller extends CI_Controller {
         } else {
             // Handle error
             $error_message = isset($response['errorMessage']) ? $response['errorMessage'] : 'Unknown error occurred';
-            
+            $this->session->set_flashdata('error', 'Payment initialization failed: ' . $error_message);
+            redirect('mpesa');
         }
     }
     
