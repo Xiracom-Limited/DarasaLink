@@ -1,92 +1,135 @@
 <?php
 
-class PaymentPlugin {
-
+class MpesaSdk {
     private $config;
-    private $maxRetries = 3;
-    private $retryDelay = 2; // seconds
+    private $listeners = [];
 
-    // Initialize the plugin with configuration settings
-    public function init($config) {
+    public function init(array $config) {
         $this->config = $config;
     }
 
-    // Initiates payment request and handles errors/retries
     public function pay($amount, $phone, $orderId) {
-        // Emit pending event
-        $this->emitEvent('onPending', ['orderId' => $orderId, 'amount' => $amount, 'phone' => $phone]);
-
-        $retryCount = 0;
-        $success = false;
-
-        while ($retryCount < $this->maxRetries && !$success) {
-            try {
-                // Call the backend (Developer A) helper for STK Push
-                $response = $this->makePaymentRequest($amount, $phone, $orderId);
-
-                if ($response['status'] === 'success') {
-                    // Emit success event
-                    $this->emitEvent('onSuccess', ['orderId' => $orderId, 'response' => $response]);
-                    $success = true;
-                } else {
-                    throw new Exception('Payment failed: ' . $response['message']);
-                }
-            } catch (Exception $e) {
-                // Handle network error and retry
-                if ($retryCount < $this->maxRetries - 1) {
-                    $this->emitEvent('onFail', ['orderId' => $orderId, 'error' => $e->getMessage()]);
-                    sleep($this->retryDelay);
-                } else {
-                    $this->emitEvent('onFail', ['orderId' => $orderId, 'error' => $e->getMessage()]);
-                }
-            }
-            $retryCount++;
-        }
-    }
-
-    // Makes the payment request to Developer A’s API
-    private function makePaymentRequest($amount, $phone, $orderId) {
-        // Example of calling Developer A's STK Push helper
-        // Replace with actual request to backend (A)
-        $apiUrl = $this->config['api_url'] . '/stkpush';
         $payload = [
             'amount' => $amount,
             'phone' => $phone,
             'orderId' => $orderId,
-            'consumerKey' => $this->config['consumerKey'],
-            'consumerSecret' => $this->config['consumerSecret']
         ];
 
-        $response = $this->makeApiRequest($apiUrl, $payload);
-        return $response;
+        try {
+            $response = $this->stkPush($payload);
+
+            if ($response['status'] == 'Pending') {
+                $this->emit('onPending', $response);
+            } elseif ($response['status'] == 'Success') {
+                $this->emit('onSuccess', $response);
+            } else {
+                $this->emit('onFail', $response);
+            }
+        } catch (Exception $e) {
+            $this->emit('onFail', ['error' => $e->getMessage()]);
+        }
     }
 
-    // Makes an API request to the provided URL
-    private function makeApiRequest($url, $data) {
-        $ch = curl_init($url);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+    public function on($event, callable $callback) {
+        $this->listeners[$event][] = $callback;
+    }
+
+    private function emit($event, $data) {
+        if (!empty($this->listeners[$event])) {
+            foreach ($this->listeners[$event] as $listener) {
+                $listener($data);
+            }
+        }
+    }
+
+    private function stkPush($payload) {
+        $accessToken = $this->generateAccessToken();
+
+        $timestamp = date('YmdHis');
+        $password = base64_encode(
+            $this->config['shortcode'] .
+            $this->config['passkey'] .
+            $timestamp
+        );
+
+        $url = 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest'; //'https://api.safaricom.co.ke' for production
+
+        $stkPayload = [
+            'BusinessShortCode' => $this->config['shortcode'],
+            'Password' => $password,
+            'Timestamp' => $timestamp,
+            'TransactionType' => 'CustomerPayBillOnline',
+            'Amount' => $payload['amount'],
+            'PartyA' => $payload['phone'],
+            'PartyB' => $this->config['shortcode'],
+            'PhoneNumber' => $payload['phone'],
+            'CallBackURL' => $this->config['callback_url'],
+            'AccountReference' => $payload['orderId'],
+            'TransactionDesc' => 'Payment for Order ' . $payload['orderId'],
+        ];
+
+        $curl = curl_init();
+        curl_setopt($curl, CURLOPT_URL, $url);
+        curl_setopt($curl, CURLOPT_HTTPHEADER, [
             'Content-Type: application/json',
-            'Accept: application/json'
+            'Authorization: Bearer ' . $accessToken
         ]);
+        curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($curl, CURLOPT_POST, true);
+        curl_setopt($curl, CURLOPT_POSTFIELDS, json_encode($stkPayload));
 
-        $response = curl_exec($ch);
-        $error = curl_error($ch);
-        curl_close($ch);
+        $response = curl_exec($curl);
 
-        if ($error) {
-            throw new Exception("Curl error: $error");
+        if (curl_errno($curl)) {
+            throw new Exception('STK Push failed: ' . curl_error($curl));
         }
 
-        return json_decode($response, true);
+        curl_close($curl);
+
+        $responseData = json_decode($response, true);
+
+        if (isset($responseData['ResponseCode']) && $responseData['ResponseCode'] == "0") {
+            return [
+                'status' => 'Pending',
+                'MerchantRequestID' => $responseData['MerchantRequestID'],
+                'CheckoutRequestID' => $responseData['CheckoutRequestID'],
+                'orderId' => $payload['orderId'],
+                'amount' => $payload['amount'],
+                'phone' => $payload['phone']
+            ];
+        } else {
+            throw new Exception('STK Push Error: ' . ($responseData['errorMessage'] ?? 'Unknown Error'));
+        }
     }
 
-    // Emits events (e.g., onPending, onSuccess, onFail)
-    private function emitEvent($eventName, $data) {
-        echo "Event: $eventName, Data: " . json_encode($data) . "\n";
+    private function generateAccessToken() {
+        $url = 'https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials';
+
+        $credentials = base64_encode(
+            $this->config['consumer_key'] . ':' . $this->config['consumer_secret']
+        );
+
+        $curl = curl_init();
+        curl_setopt($curl, CURLOPT_URL, $url);
+        curl_setopt($curl, CURLOPT_HTTPHEADER, [
+            'Authorization: Basic ' . $credentials
+        ]);
+        curl_setopt($curl, CURLOPT_RETURNTRANSFER, true);
+
+        $response = curl_exec($curl);
+
+        if (curl_errno($curl)) {
+            throw new Exception('Access Token request failed: ' . curl_error($curl));
+        }
+
+        curl_close($curl);
+
+        $data = json_decode($response, true);
+
+        if (isset($data['access_token'])) {
+            return $data['access_token'];
+        } else {
+            throw new Exception('Access token not received');
+        }
     }
 }
-
-?>
