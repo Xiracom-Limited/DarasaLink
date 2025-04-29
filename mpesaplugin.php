@@ -52,7 +52,7 @@ class MpesaSdk {
             $timestamp
         );
 
-        $url = 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest'; //'https://api.safaricom.co.ke' for production
+        $url = 'https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest'; 
 
         $stkPayload = [
             'BusinessShortCode' => $this->config['shortcode'],
